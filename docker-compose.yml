@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+  chromadb:
+    image: chromadb/chroma
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    restart: unless-stopped
+
+  mlflow:
+    image: python:3.10-slim
+    container_name: mlflow
+    working_dir: /mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      bash -c "pip install mlflow && 
+               mlflow server 
+               --host 0.0.0.0 
+               --port 5000 
+               --backend-store-uri sqlite:///mlflow.db 
+               --default-artifact-root /mlflow/artifacts"
+    restart: unless-stopped
+    
+  embeddings:
+    image: python:3.10-slim
+    container_name: embeddings
+    working_dir: /app
+    ports:
+      - "6000:6000"
+    volumes:
+      - ./embedding_service:/app
+    command: >
+      bash -c "pip install fastapi uvicorn sentence-transformers &&
+               uvicorn app:app --host 0.0.0.0 --port 6000"
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  chroma_data:
+  mlflow_data:
