@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Inference Benchmark</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --surface: #ffffff;
+    --surface-soft: #fbfbfd;
+    --surface-inset: #f5f5f7;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-strong: rgba(0, 0, 0, 0.14);
+    --text: #1d1d1f;
+    --text-muted: #6e6e73;
+    --text-faint: #86868b;
+    --accent: #0071e3;
+    --accent-hover: #0077ed;
+    --accent-soft: rgba(0, 113, 227, 0.10);
+    --green: #30a46c;
+    --green-soft: rgba(48, 164, 108, 0.12);
+    --yellow: #c47e00;
+    --yellow-soft: rgba(255, 159, 10, 0.14);
+    --red: #d70015;
+    --red-soft: rgba(255, 59, 48, 0.12);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.04);
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    letter-spacing: -0.01em;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    padding: 22px 32px;
+    background: rgba(245, 245, 247, 0.78);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  header .inner { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; gap: 24px; }
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.022em; }
+  nav.tabs { display: flex; gap: 4px; margin-left: auto; }
+  nav.tabs a {
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 13px; font-weight: 500;
+    padding: 7px 14px; border-radius: 999px;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  nav.tabs a:hover { color: var(--text); background: rgba(0,0,0,0.04); }
+  nav.tabs a.active { color: var(--accent); background: var(--accent-soft); }
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 32px 56px; }
+  h2 {
+    font-size: 11px; font-weight: 600; margin-bottom: 14px;
+    color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .layout { display: grid; grid-template-columns: 400px 1fr; gap: 24px; align-items: start; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+    box-shadow: var(--shadow-sm);
+  }
+  .panel + .panel { margin-top: 18px; }
+  .panel-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .panel-title-row h2 { margin-bottom: 0; }
+
+  .endpoint {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 14px 14px 12px;
+    margin-bottom: 12px;
+    background: var(--surface-soft);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .endpoint:last-child { margin-bottom: 0; }
+  .endpoint:hover { border-color: var(--border-strong); }
+  .endpoint-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+  .endpoint-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; letter-spacing: -0.01em; }
+  .badge {
+    font-size: 10px; padding: 2px 8px; border-radius: 999px;
+    font-weight: 500; letter-spacing: 0.02em;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .badge.local { background: var(--green-soft); color: var(--green); }
+  .endpoint-url { font-size: 12px; color: var(--text-faint); word-break: break-all; margin-bottom: 10px; }
+
+  .models { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; padding: 4px; margin: 0 -4px; }
+  .models::-webkit-scrollbar { width: 6px; }
+  .models::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 999px; }
+  .model-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; padding: 6px 8px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: background 120ms ease;
+  }
+  .model-row:hover { background: rgba(0, 0, 0, 0.035); }
+  .model-row input { accent-color: var(--accent); width: 14px; height: 14px; }
+  .model-row code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--text);
+    background: transparent; padding: 0;
+  }
+
+  button {
+    background: var(--accent); color: white; border: 0;
+    padding: 8px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    font-family: inherit; letter-spacing: -0.01em;
+    transition: background 120ms ease, transform 80ms ease, opacity 120ms ease;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:active { transform: scale(0.97); }
+  button.ghost {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+  }
+  button.ghost:hover { background: var(--surface-inset); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:disabled:hover { background: var(--accent); }
+
+  .loading { font-size: 12px; color: var(--text-faint); padding: 6px 4px; }
+  .error { font-size: 12px; color: var(--red); padding: 6px 4px; }
+
+  .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .field > label:not(.checkbox) {
+    display: block; font-size: 11px; color: var(--text-faint);
+    margin-bottom: 6px; font-weight: 500; letter-spacing: -0.005em;
+  }
+  .field input[type=text], .field input[type=number] {
+    width: 100%; background: var(--surface);
+    color: var(--text); border: 1px solid var(--border-strong);
+    padding: 8px 11px; border-radius: var(--radius-sm);
+    font-size: 13px; font-family: inherit;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; user-select: none; }
+  .checkbox input { accent-color: var(--accent); width: 14px; height: 14px; }
+
+  .run-bar { display: flex; gap: 12px; margin-top: 20px; align-items: center; padding-top: 18px; border-top: 1px solid var(--border); }
+  .run-bar button { padding: 10px 20px; font-size: 14px; font-weight: 500; }
+  .selection-count { font-size: 13px; color: var(--text-faint); margin-left: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-faint); font-weight: 500; font-size: 11px; letter-spacing: 0.02em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr { transition: background 120ms ease; }
+  tbody tr:hover { background: var(--surface-inset); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+  td code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--text-muted);
+  }
+
+  .events {
+    max-height: 340px; overflow-y: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.7;
+    padding: 14px 16px;
+    background: var(--surface-inset);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+  }
+  .events::-webkit-scrollbar { width: 6px; }
+  .events::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 999px; }
+  .ev { color: var(--text); }
+  .ev .ts { color: var(--text-faint); margin-right: 10px; font-variant-numeric: tabular-nums; }
+  .ev.warn { color: var(--yellow); }
+  .ev.err { color: var(--red); }
+  .ev.ok { color: var(--green); }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+    text-transform: capitalize;
+  }
+  .status::before {
+    content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .status:empty { display: none; }
+  .status.running { background: var(--accent-soft); color: var(--accent); }
+  .status.running::before { animation: pulse 1.4s ease-in-out infinite; }
+  .status.done { background: var(--green-soft); color: var(--green); }
+  .status.error { background: var(--red-soft); color: var(--red); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .empty { color: var(--text-faint); font-size: 13px; padding: 28px 12px; text-align: center; }
+
+  .add-endpoint-form {
+    margin-top: 14px;
+    padding: 16px;
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .add-endpoint-form[hidden] { display: none; }
+  .add-endpoint-form .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .add-endpoint-form .form-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  .add-endpoint-form .form-actions .form-error { margin-right: auto; color: var(--red); font-size: 12px; }
+  .add-endpoint-form button { padding: 7px 14px; font-size: 13px; }
+  .icon-btn {
+    background: transparent; color: var(--accent);
+    border: 0; padding: 4px 10px; border-radius: 999px;
+    font-size: 13px; font-weight: 500;
+  }
+  .icon-btn:hover { background: var(--accent-soft); }
+
+  .page[hidden] { display: none; }
+
+  /* --- GPU predictor --- */
+  .predictor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  .field select {
+    width: 100%; background: var(--surface);
+    color: var(--text); border: 1px solid var(--border-strong);
+    padding: 8px 11px; border-radius: var(--radius-sm);
+    font-size: 13px; font-family: inherit;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%236e6e73' d='M0 0l5 6 5-6z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 30px;
+    cursor: pointer;
+  }
+  .field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  .field-suffix {
+    position: relative;
+  }
+  .field-suffix .suffix {
+    position: absolute; right: 12px; bottom: 9px;
+    color: var(--text-faint); font-size: 12px; pointer-events: none;
+  }
+  .field-suffix input { padding-right: 50px; }
+  /* Hide native number spinners on suffix-bearing inputs so they don't
+     collide with the GB label. Other number inputs keep their spinners. */
+  .field-suffix input[type=number]::-webkit-inner-spin-button,
+  .field-suffix input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .field-suffix input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+  .section-title {
+    font-size: 11px; font-weight: 600; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin: 22px 0 12px;
+    padding-top: 18px; border-top: 1px solid var(--border);
+  }
+  .section-title:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  .hero-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .result-hero {
+    background: linear-gradient(135deg, var(--accent) 0%, #5b8def 100%);
+    color: white;
+    padding: 24px;
+    border-radius: var(--radius-lg);
+  }
+  .result-hero .label { font-size: 12px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
+  .result-hero .value {
+    font-size: clamp(34px, 4vw, 48px);
+    font-weight: 600; letter-spacing: -0.04em;
+    margin-top: 4px; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .result-hero .value .unit { font-size: 0.45em; font-weight: 500; opacity: 0.85; margin-left: 6px; letter-spacing: -0.01em; }
+  .result-hero .sub { font-size: 13px; opacity: 0.85; margin-top: 8px; }
+  .result-hero.error { background: linear-gradient(135deg, #ff453a 0%, #d70015 100%); }
+  .result-hero.secondary { background: linear-gradient(135deg, #34c759 0%, #248a3d 100%); }
+  .result-hero.muted { background: linear-gradient(135deg, #8e8e93 0%, #636366 100%); }
+
+  .result-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .stat {
+    padding: 16px;
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .stat .label { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+  .stat .value { font-size: 20px; font-weight: 600; margin-top: 4px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .stat .unit { font-size: 13px; color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+
+  .formula {
+    margin-top: 18px;
+    padding: 16px;
+    background: var(--surface-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--text-muted);
+  }
+  .formula .var { color: var(--accent); }
+  .formula .out { color: var(--text); font-weight: 600; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+    main { padding: 20px; }
+    header { padding: 18px 20px; }
+    .add-endpoint-form .field-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="inner">
+    <h1>LLM Inference Benchmark</h1>
+    <nav class="tabs">
+      <a href="#benchmark" data-page="benchmark">Benchmark</a>
+      <a href="#predictor" data-page="predictor">GPU Predictor</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section id="page-benchmark" class="page">
+<div class="layout">
+  <div>
+    <div class="panel">
+      <div class="panel-title-row">
+        <h2>Endpoints &amp; Models</h2>
+        <button id="toggle-add-btn" class="icon-btn" type="button">+ Add endpoint</button>
+      </div>
+      <div id="endpoints"><div class="loading">Loading endpoints…</div></div>
+
+      <div id="add-endpoint-form" class="add-endpoint-form" hidden>
+        <div class="field-row">
+          <div class="field">
+            <label>Name</label>
+            <input id="new-ep-name" type="text" placeholder="my-server" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>API key</label>
+            <input id="new-ep-key" type="text" placeholder="optional" autocomplete="off">
+          </div>
+        </div>
+        <div class="field">
+          <label>URL</label>
+          <input id="new-ep-url" type="text" placeholder="http://localhost:11434/v1" autocomplete="off">
+        </div>
+        <div class="form-actions">
+          <span id="add-ep-error" class="form-error"></span>
+          <button id="cancel-add-btn" class="ghost" type="button">Cancel</button>
+          <button id="save-endpoint-btn" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Test parameters</h2>
+      <div class="options-grid">
+        <div class="field">
+          <label>Concurrency levels</label>
+          <input id="opt-concurrency" type="text" value="1, 5, 10">
+        </div>
+        <div class="field">
+          <label>Iterations</label>
+          <input id="opt-iterations" type="number" min="1" value="3">
+        </div>
+        <div class="field">
+          <label>Max tokens</label>
+          <input id="opt-max-tokens" type="number" min="1" value="256">
+        </div>
+        <div class="field">
+          <label>Timeout (s)</label>
+          <input id="opt-timeout" type="number" min="1" value="60">
+        </div>
+        <div class="field" style="grid-column: 1 / -1;">
+          <label class="checkbox"><input id="opt-warmup" type="checkbox" checked> Warmup before timed iterations</label>
+        </div>
+        <div class="field">
+          <label class="checkbox"><input id="opt-streaming" type="checkbox" checked> Streaming (measure TTFT)</label>
+        </div>
+      </div>
+      <div class="run-bar">
+        <button id="run-btn">Run benchmark</button>
+        <span class="selection-count" id="sel-count">0 selected</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <div class="panel-title-row">
+        <h2>Status</h2>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="events" class="events"><div class="empty">Pick models on the left and hit “Run benchmark” to start.</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Results</h2>
+      <div id="results"><div class="empty">No results yet.</div></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<section id="page-predictor" class="page" hidden>
+<div class="layout">
+  <div>
+    <div class="panel">
+      <div class="section-title">GPU</div>
+      <div class="predictor-grid">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>Preset</label>
+          <select id="gpu-preset">
+            <option value="">Custom…</option>
+            <optgroup label="Datacenter — Blackwell">
+              <option data-vram="192" data-bw="8000">B200 SXM — 192 GB · 8000 GB/s</option>
+              <option data-vram="180" data-bw="7700">B100 — 180 GB · 7700 GB/s</option>
+            </optgroup>
+            <optgroup label="Datacenter — Hopper">
+              <option data-vram="141" data-bw="4800">H200 SXM — 141 GB · 4800 GB/s</option>
+              <option data-vram="80"  data-bw="3350">H100 SXM — 80 GB · 3350 GB/s</option>
+              <option data-vram="80"  data-bw="2000">H100 PCIe — 80 GB · 2000 GB/s</option>
+            </optgroup>
+            <optgroup label="Datacenter — Ampere / Ada">
+              <option data-vram="80"  data-bw="2039" selected>A100 80 GB SXM — 2039 GB/s</option>
+              <option data-vram="40"  data-bw="1555">A100 40 GB — 1555 GB/s</option>
+              <option data-vram="48"  data-bw="864" >L40S — 48 GB · 864 GB/s</option>
+            </optgroup>
+            <optgroup label="RTX Pro Blackwell (2025–26)">
+              <option data-vram="96"  data-bw="1792">RTX Pro 6000 Blackwell Workstation — 96 GB · 1792 GB/s</option>
+              <option data-vram="96"  data-bw="1792">RTX Pro 6000 Blackwell Max-Q — 96 GB · 1792 GB/s</option>
+              <option data-vram="96"  data-bw="1600">RTX Pro 6000 Blackwell Server — 96 GB · 1600 GB/s</option>
+              <option data-vram="48"  data-bw="1344">RTX Pro 5000 Blackwell — 48 GB · 1344 GB/s</option>
+              <option data-vram="32"  data-bw="896" >RTX Pro 4500 Blackwell — 32 GB · 896 GB/s</option>
+              <option data-vram="24"  data-bw="672" >RTX Pro 4000 Blackwell — 24 GB · 672 GB/s</option>
+            </optgroup>
+            <optgroup label="GeForce RTX 50 (Blackwell)">
+              <option data-vram="32"  data-bw="1792">RTX 5090 — 32 GB · 1792 GB/s</option>
+              <option data-vram="16"  data-bw="960" >RTX 5080 — 16 GB · 960 GB/s</option>
+              <option data-vram="16"  data-bw="896" >RTX 5070 Ti — 16 GB · 896 GB/s</option>
+              <option data-vram="12"  data-bw="672" >RTX 5070 — 12 GB · 672 GB/s</option>
+            </optgroup>
+            <optgroup label="GeForce / RTX (older)">
+              <option data-vram="24"  data-bw="1008">RTX 4090 — 24 GB · 1008 GB/s</option>
+              <option data-vram="48"  data-bw="960" >RTX 6000 Ada — 48 GB · 960 GB/s</option>
+              <option data-vram="24"  data-bw="936" >RTX 3090 — 24 GB · 936 GB/s</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="field field-suffix">
+          <label>VRAM total</label>
+          <input id="vram-total" type="number" step="0.5" min="0" value="80">
+          <span class="suffix">GB</span>
+        </div>
+        <div class="field field-suffix">
+          <label>Memory bandwidth</label>
+          <input id="mem-bw" type="number" step="1" min="0" value="2039">
+          <span class="suffix">GB/s</span>
+        </div>
+        <div class="field field-suffix" style="grid-column: 1 / -1;">
+          <label>Memory bandwidth utilization (MBU)</label>
+          <input id="mbu" type="number" step="1" min="1" max="100" value="70">
+          <span class="suffix">%</span>
+        </div>
+      </div>
+
+      <div class="section-title">Model architecture</div>
+      <div class="predictor-grid">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>Preset</label>
+          <select id="model-preset">
+            <option value="">Custom…</option>
+            <optgroup label="Qwen 3.6 (2026)">
+              <option data-l="40" data-kv="2"  data-d="256" data-p="35" data-active="3" selected>Qwen 3.6 35B-A3B (MoE · 256 experts)</option>
+              <option data-l="64" data-kv="4"  data-d="256" data-p="27" data-active="27">Qwen 3.6 27B (dense)</option>
+            </optgroup>
+            <optgroup label="Gemma 4 (2026)">
+              <option data-l="60" data-kv="16" data-d="256" data-p="31"  data-active="31">Gemma 4 31B (dense)</option>
+              <option data-l="30" data-kv="8"  data-d="256" data-p="26"  data-active="4">Gemma 4 26B-A4B (MoE · 128 experts)</option>
+              <option data-l="42" data-kv="2"  data-d="256" data-p="8"   data-active="4.5">Gemma 4 E4B</option>
+            </optgroup>
+            <optgroup label="Llama">
+              <option data-l="32"  data-kv="8" data-d="128" data-p="8"   data-active="8">Llama 3.1 8B</option>
+              <option data-l="80"  data-kv="8" data-d="128" data-p="70"  data-active="70">Llama 3.1 70B</option>
+              <option data-l="126" data-kv="8" data-d="128" data-p="405" data-active="405">Llama 3.1 405B</option>
+            </optgroup>
+            <optgroup label="Qwen 2.5 / 3">
+              <option data-l="28" data-kv="4" data-d="128" data-p="7.6"  data-active="7.6">Qwen 2.5 7B</option>
+              <option data-l="48" data-kv="8" data-d="128" data-p="14.7" data-active="14.7">Qwen 2.5 14B</option>
+              <option data-l="64" data-kv="8" data-d="128" data-p="32.5" data-active="32.5">Qwen 2.5 32B</option>
+              <option data-l="80" data-kv="8" data-d="128" data-p="72.7" data-active="72.7">Qwen 2.5 72B</option>
+              <option data-l="48" data-kv="4" data-d="128" data-p="30"   data-active="3">Qwen 3 30B-A3B (MoE)</option>
+              <option data-l="36" data-kv="8" data-d="128" data-p="8.2"  data-active="8.2">Qwen 3 8B</option>
+              <option data-l="64" data-kv="8" data-d="128" data-p="32.8" data-active="32.8">Qwen 3 32B</option>
+            </optgroup>
+            <optgroup label="Mistral / Mixtral">
+              <option data-l="32" data-kv="8" data-d="128" data-p="7.25" data-active="7.25">Mistral 7B v0.3</option>
+              <option data-l="88" data-kv="8" data-d="128" data-p="123"  data-active="123">Mistral Large 2 (123B)</option>
+              <option data-l="32" data-kv="8" data-d="128" data-p="47"   data-active="13">Mixtral 8×7B (MoE)</option>
+              <option data-l="56" data-kv="8" data-d="128" data-p="141"  data-active="39">Mixtral 8×22B (MoE)</option>
+            </optgroup>
+            <optgroup label="Gemma 2 / 3">
+              <option data-l="42" data-kv="8"  data-d="256" data-p="9.2" data-active="9.2">Gemma 2 9B</option>
+              <option data-l="46" data-kv="16" data-d="128" data-p="27"  data-active="27">Gemma 2 27B</option>
+              <option data-l="48" data-kv="8"  data-d="256" data-p="12"  data-active="12">Gemma 3 12B</option>
+              <option data-l="62" data-kv="16" data-d="128" data-p="27"  data-active="27">Gemma 3 27B</option>
+            </optgroup>
+            <optgroup label="DeepSeek">
+              <option data-l="27" data-kv="16" data-d="128" data-p="16"  data-active="2.4">DeepSeek-V2-Lite (MoE)</option>
+            </optgroup>
+            <optgroup label="Phi">
+              <option data-l="32" data-kv="32" data-d="96"  data-p="3.8" data-active="3.8">Phi 3 Mini</option>
+              <option data-l="40" data-kv="10" data-d="128" data-p="14"  data-active="14">Phi 3 Medium</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="field"><label>num_layers</label><input id="num-layers" type="number" min="1" value="40"></div>
+        <div class="field"><label>num_kv_heads</label><input id="num-kv-heads" type="number" min="1" value="2"></div>
+        <div class="field"><label>head_dim</label><input id="head-dim" type="number" min="1" value="256"></div>
+        <div class="field field-suffix">
+          <label>Total parameters</label>
+          <input id="num-params" type="number" min="0" step="0.1" value="35">
+          <span class="suffix">B</span>
+        </div>
+        <div class="field field-suffix">
+          <label>Active parameters</label>
+          <input id="active-params" type="number" min="0" step="0.1" value="3">
+          <span class="suffix">B</span>
+        </div>
+        <div class="field">
+          <label>Weight quantization</label>
+          <select id="weight-quant">
+            <option value="4">FP32 (4 B)</option>
+            <option value="2">FP16 / BF16 (2 B)</option>
+            <option value="1">FP8 / INT8 (1 B)</option>
+            <option value="0.5" selected>INT4 / Q4 (0.5 B)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>KV cache dtype</label>
+          <select id="bytes-per-element">
+            <option value="4">FP32 (4 bytes)</option>
+            <option value="2" selected>FP16 / BF16 (2 bytes)</option>
+            <option value="1">FP8 / INT8 (1 byte)</option>
+            <option value="0.5">INT4 (0.5 bytes)</option>
+          </select>
+        </div>
+        <div class="field field-suffix">
+          <label>Overhead</label>
+          <input id="vram-overhead" type="number" step="0.1" min="0" value="2">
+          <span class="suffix">GB</span>
+        </div>
+      </div>
+
+      <div class="section-title">Request</div>
+      <div class="predictor-grid">
+        <div class="field" style="grid-column: 1 / -1;">
+          <label>Context length (tokens)</label>
+          <input id="context-length" type="number" min="1" step="512" value="8192">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="hero-row">
+      <div id="hero" class="result-hero">
+        <div class="label">Max concurrent users</div>
+        <div class="value" id="hero-value">—</div>
+        <div class="sub" id="hero-sub">Adjust the parameters on the left.</div>
+      </div>
+      <div id="hero-tps" class="result-hero secondary">
+        <div class="label">Tokens / sec (decode est.)</div>
+        <div class="value" id="hero-tps-value">—<span class="unit">tok/s</span></div>
+        <div class="sub" id="hero-tps-sub">Memory-bound, single request.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Breakdown</h2>
+      <div class="result-stats">
+        <div class="stat">
+          <div class="label">Weights (total)</div>
+          <div class="value"><span id="stat-weights">—</span><span class="unit">GB</span></div>
+        </div>
+        <div class="stat">
+          <div class="label">Weights (active)</div>
+          <div class="value"><span id="stat-weights-active">—</span><span class="unit">GB</span></div>
+        </div>
+        <div class="stat">
+          <div class="label">VRAM available</div>
+          <div class="value"><span id="stat-vram">—</span><span class="unit">GB</span></div>
+        </div>
+        <div class="stat">
+          <div class="label">KV cache / token</div>
+          <div class="value"><span id="stat-kv-token">—</span><span class="unit" id="stat-kv-token-unit">KB</span></div>
+        </div>
+        <div class="stat">
+          <div class="label">KV cache / request</div>
+          <div class="value"><span id="stat-kv-request">—</span><span class="unit" id="stat-kv-request-unit">MB</span></div>
+        </div>
+      </div>
+
+      <div class="formula" id="formula">
+        <div><span class="var">weights_total</span>  = total_params × bytes_per_param</div>
+        <div><span class="var">weights_active</span> = active_params × bytes_per_param</div>
+        <div><span class="var">VRAM_available</span> = VRAM_total − weights_total − overhead</div>
+        <div><span class="var">KV_cache_per_token</span> = 2 × num_layers × num_kv_heads × head_dim × bytes_per_element</div>
+        <div><span class="var">KV_cache_per_request</span> = KV_cache_per_token × context_length</div>
+        <div><span class="out">max_concurrency</span> = ⌊ VRAM_available / KV_cache_per_request ⌋</div>
+        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);">
+          <span class="var">TPOT</span> = (weights_active + KV_active) / (memory_bandwidth × MBU)
+        </div>
+        <div><span class="out">tokens_per_second</span> = 1 / TPOT</div>
+        <div style="color: var(--text-faint); font-size: 11px; margin-top: 6px;">
+          For dense models <span class="var">weights_active</span> = <span class="var">weights_total</span>;
+          for MoE only the routed experts are read per decode step.<br>
+          KV_active grows 0 → KV_cache_per_request as context fills. Headline uses the mid-context average.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let ENDPOINTS = [];
+let MODELS = {};       // endpoint name -> [model ids]
+let MODELS_LOADING = {}; // endpoint name -> "loading" | "loaded" | "error"
+let MODELS_ERROR = {};
+let SELECTIONS = new Set();    // "endpoint::model"
+let CURRENT_JOB = null;
+let POLL_TIMER = null;
+
+async function fetchEndpoints() {
+  const r = await fetch("/api/endpoints");
+  const j = await r.json();
+  ENDPOINTS = j.endpoints;
+  renderEndpoints();
+}
+
+async function fetchModels(name) {
+  MODELS_LOADING[name] = "loading";
+  renderEndpoints();
+  try {
+    const r = await fetch("/api/models?endpoint=" + encodeURIComponent(name));
+    const j = await r.json();
+    if (j.error) {
+      MODELS_LOADING[name] = "error";
+      MODELS_ERROR[name] = j.error;
+    } else {
+      MODELS[name] = j.models;
+      MODELS_LOADING[name] = "loaded";
+    }
+  } catch (e) {
+    MODELS_LOADING[name] = "error";
+    MODELS_ERROR[name] = e.message;
+  }
+  renderEndpoints();
+}
+
+function selKey(ep, m) { return ep + "::" + m; }
+
+function toggleSelection(ep, m) {
+  const k = selKey(ep, m);
+  if (SELECTIONS.has(k)) SELECTIONS.delete(k);
+  else SELECTIONS.add(k);
+  $("sel-count").textContent = SELECTIONS.size + " selected";
+}
+
+function renderEndpoints() {
+  const root = $("endpoints");
+  root.innerHTML = "";
+  for (const ep of ENDPOINTS) {
+    const div = document.createElement("div");
+    div.className = "endpoint";
+
+    const head = document.createElement("div");
+    head.className = "endpoint-head";
+    head.innerHTML = `
+      <div>
+        <div class="endpoint-name">${ep.name}
+          ${ep.is_local ? '<span class="badge local">local</span>' : '<span class="badge">remote</span>'}
+        </div>
+      </div>
+    `;
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const btn = document.createElement("button");
+    btn.className = "ghost";
+    btn.textContent = MODELS_LOADING[ep.name] === "loaded" ? "Refresh" : "Load models";
+    btn.onclick = () => fetchModels(ep.name);
+    actions.appendChild(btn);
+    head.appendChild(actions);
+    div.appendChild(head);
+
+    const url = document.createElement("div");
+    url.className = "endpoint-url";
+    url.textContent = ep.url;
+    div.appendChild(url);
+
+    const state = MODELS_LOADING[ep.name];
+    if (state === "loading") {
+      const l = document.createElement("div"); l.className = "loading"; l.textContent = "Loading models…";
+      div.appendChild(l);
+    } else if (state === "error") {
+      const l = document.createElement("div"); l.className = "error"; l.textContent = "Error: " + (MODELS_ERROR[ep.name] || "");
+      div.appendChild(l);
+    } else if (state === "loaded") {
+      const list = document.createElement("div");
+      list.className = "models";
+      const models = MODELS[ep.name] || [];
+      if (!models.length) {
+        const l = document.createElement("div"); l.className = "loading"; l.textContent = "No models reported.";
+        div.appendChild(l);
+      } else {
+        for (const m of models) {
+          const row = document.createElement("label");
+          row.className = "model-row";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = SELECTIONS.has(selKey(ep.name, m));
+          cb.onchange = () => toggleSelection(ep.name, m);
+          row.appendChild(cb);
+          const code = document.createElement("code");
+          code.textContent = m;
+          row.appendChild(code);
+          list.appendChild(row);
+        }
+        div.appendChild(list);
+      }
+    }
+
+    root.appendChild(div);
+  }
+}
+
+function parseConcurrency(s) {
+  return s.split(",").map(x => parseInt(x.trim(), 10)).filter(x => Number.isFinite(x) && x > 0);
+}
+
+async function runBenchmark() {
+  if (!SELECTIONS.size) { alert("Select at least one model"); return; }
+  const selections = [...SELECTIONS].map(k => {
+    const [endpoint, model] = k.split("::");
+    return { endpoint, model };
+  });
+  const tests = {
+    concurrency_levels: parseConcurrency($("opt-concurrency").value),
+    iterations: parseInt($("opt-iterations").value, 10),
+    max_tokens: parseInt($("opt-max-tokens").value, 10),
+    timeout: parseInt($("opt-timeout").value, 10),
+    streaming: $("opt-streaming").checked,
+    warmup: $("opt-warmup").checked,
+  };
+  $("run-btn").disabled = true;
+  $("events").innerHTML = "";
+  $("results").innerHTML = `<div class="empty">Running…</div>`;
+  setStatus("running");
+
+  const r = await fetch("/api/benchmark", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selections, tests }),
+  });
+  const j = await r.json();
+  if (j.error) { alert("Error: " + j.error); $("run-btn").disabled = false; return; }
+  CURRENT_JOB = { id: j.job_id, since: 0 };
+  pollJob();
+}
+
+function setStatus(s) {
+  const el = $("status");
+  el.className = "status " + s;
+  el.textContent = s;
+}
+
+function appendEvent(ev) {
+  const root = $("events");
+  if (root.querySelector(".empty")) root.innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "ev";
+  let cls = "ev"; let text = "";
+  const ts = (ev.ts || "").slice(11, 19);
+  switch (ev.type) {
+    case "selection_start": cls += " ok"; text = `▶ ${ev.endpoint} / ${ev.model}`; break;
+    case "selection_done":  text = `✓ ${ev.endpoint} / ${ev.model} finished`; break;
+    case "warmup_start":    text = `  warmup ${ev.endpoint} / ${ev.model} …`; break;
+    case "warmup_done":
+      cls += ev.ok ? " ok" : " err";
+      text = ev.ok
+        ? `  warmup ok (${ev.elapsed.toFixed(1)}s)`
+        : `  warmup FAILED: ${ev.error}`;
+      break;
+    case "skip":            cls += " err"; text = `  skipping ${ev.endpoint}/${ev.model}: ${ev.reason}`; break;
+    case "batch_start":     text = `  conc=${ev.concurrency} iter=${ev.iteration}/${ev.total_iterations} …`; break;
+    case "batch_done":      text = `    done ${ev.ok}/${ev.total} in ${ev.wall.toFixed(2)}s`; break;
+    case "summary":         cls += " ok"; text = `  + summary conc=${ev.summary.concurrency}`; break;
+    case "warning":         cls += " warn"; text = `  ! ${ev.message}`; break;
+    default: return;
+  }
+  div.className = cls;
+  div.innerHTML = `<span class="ts">${ts}</span>${text}`;
+  root.appendChild(div);
+  root.scrollTop = root.scrollHeight;
+}
+
+function fmt(v, kind) {
+  if (v == null || isNaN(v)) return "—";
+  if (kind === "ms") return (v * 1000).toFixed(0) + " ms";
+  if (kind === "tps") return v.toFixed(1) + " tok/s";
+  if (kind === "rps") return v.toFixed(2);
+  return v.toString();
+}
+
+function renderResults(summaries) {
+  const root = $("results");
+  if (!summaries.length) { root.innerHTML = `<div class="empty">No results yet.</div>`; return; }
+  let html = `<table>
+    <thead><tr>
+      <th>Endpoint</th><th>Model</th>
+      <th class="num">Conc</th><th class="num">OK / Total</th>
+      <th class="num">TTFT avg</th><th class="num">TTFT p95</th>
+      <th class="num">Latency avg</th><th class="num">Latency p95</th>
+      <th class="num">Tok/s</th><th class="num">RPS</th>
+    </tr></thead><tbody>`;
+  for (const s of summaries) {
+    html += `<tr>
+      <td>${s.endpoint_name}</td><td><code>${s.model}</code></td>
+      <td class="num">${s.concurrency}</td>
+      <td class="num">${s.successful}/${s.total_requests}</td>
+      <td class="num">${fmt(s.avg_ttft, "ms")}</td>
+      <td class="num">${fmt(s.p95_ttft, "ms")}</td>
+      <td class="num">${fmt(s.avg_total_time, "ms")}</td>
+      <td class="num">${fmt(s.p95_total_time, "ms")}</td>
+      <td class="num">${fmt(s.avg_tokens_per_second, "tps")}</td>
+      <td class="num">${fmt(s.throughput_rps, "rps")}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  root.innerHTML = html;
+}
+
+async function pollJob() {
+  if (!CURRENT_JOB) return;
+  try {
+    const r = await fetch(`/api/benchmark/${CURRENT_JOB.id}?since=${CURRENT_JOB.since}`);
+    const j = await r.json();
+    for (const ev of j.events) appendEvent(ev);
+    CURRENT_JOB.since = j.next_since;
+    renderResults(j.summaries);
+    if (j.status === "done") {
+      setStatus("done"); $("run-btn").disabled = false; CURRENT_JOB = null; return;
+    }
+    if (j.status === "error") {
+      setStatus("error");
+      appendEvent({ type: "warning", message: j.error || "unknown error", ts: new Date().toISOString() });
+      $("run-btn").disabled = false; CURRENT_JOB = null; return;
+    }
+  } catch (e) {
+    appendEvent({ type: "warning", message: "poll failed: " + e.message, ts: new Date().toISOString() });
+  }
+  POLL_TIMER = setTimeout(pollJob, 600);
+}
+
+function toggleAddForm(show) {
+  const form = $("add-endpoint-form");
+  form.hidden = !show;
+  $("add-ep-error").textContent = "";
+  if (show) {
+    $("new-ep-name").value = "";
+    $("new-ep-url").value = "";
+    $("new-ep-key").value = "";
+    setTimeout(() => $("new-ep-name").focus(), 0);
+  }
+}
+
+async function saveEndpoint() {
+  const name = $("new-ep-name").value.trim();
+  const url = $("new-ep-url").value.trim();
+  const api_key = $("new-ep-key").value.trim();
+  const errEl = $("add-ep-error");
+  errEl.textContent = "";
+  if (!name || !url) { errEl.textContent = "Name and URL are required."; return; }
+  const btn = $("save-endpoint-btn");
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/endpoints", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, url, api_key }),
+    });
+    const j = await r.json();
+    if (!r.ok) { errEl.textContent = j.error || "Failed to save."; btn.disabled = false; return; }
+    toggleAddForm(false);
+    await fetchEndpoints();
+    fetchModels(name);  // auto-load models for the new endpoint
+  } catch (e) {
+    errEl.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("toggle-add-btn").onclick = () => toggleAddForm($("add-endpoint-form").hidden);
+$("cancel-add-btn").onclick = () => toggleAddForm(false);
+$("save-endpoint-btn").onclick = saveEndpoint;
+for (const id of ["new-ep-name", "new-ep-url", "new-ep-key"]) {
+  $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") saveEndpoint(); });
+}
+
+$("run-btn").onclick = runBenchmark;
+fetchEndpoints();
+
+// ---------------------------------------------------------------------------
+// Tab routing
+// ---------------------------------------------------------------------------
+
+function showPage(name) {
+  const valid = ["benchmark", "predictor"];
+  if (!valid.includes(name)) name = "benchmark";
+  for (const v of valid) $("page-" + v).hidden = (v !== name);
+  for (const a of document.querySelectorAll("nav.tabs a")) {
+    a.classList.toggle("active", a.dataset.page === name);
+  }
+}
+function pageFromHash() {
+  return (location.hash || "#benchmark").slice(1);
+}
+window.addEventListener("hashchange", () => showPage(pageFromHash()));
+showPage(pageFromHash());
+
+// ---------------------------------------------------------------------------
+// GPU concurrency predictor
+// ---------------------------------------------------------------------------
+
+const GB = 1024 ** 3;
+
+function fmtBytes(n) {
+  if (n < 1024) return { v: n.toFixed(0), u: "B" };
+  if (n < 1024 ** 2) return { v: (n / 1024).toFixed(2), u: "KB" };
+  if (n < 1024 ** 3) return { v: (n / 1024 ** 2).toFixed(2), u: "MB" };
+  return { v: (n / 1024 ** 3).toFixed(2), u: "GB" };
+}
+
+function predict() {
+  const vramTotalGB    = parseFloat($("vram-total").value)        || 0;
+  const memBwGBps      = parseFloat($("mem-bw").value)            || 0;
+  const overheadGB     = parseFloat($("vram-overhead").value)     || 0;
+  const numLayers      = parseInt($("num-layers").value, 10)      || 0;
+  const numKvHeads     = parseInt($("num-kv-heads").value, 10)    || 0;
+  const headDim        = parseInt($("head-dim").value, 10)        || 0;
+  const numParamsB     = parseFloat($("num-params").value)        || 0;
+  const activeParamsB  = parseFloat($("active-params").value)     || numParamsB;
+  const bytesPerWeight = parseFloat($("weight-quant").value)      || 0;
+  const bytesPerElem   = parseFloat($("bytes-per-element").value) || 0;
+  const contextLength  = parseInt($("context-length").value, 10)  || 0;
+
+  // Total weights determine VRAM footprint (entire model lives in HBM).
+  // Active weights determine decode speed (only routed experts read per token).
+  // For dense models, active = total.
+  const weightsTotalGB  = (numParamsB    * 1e9 * bytesPerWeight) / GB;
+  const weightsActiveGB = (activeParamsB * 1e9 * bytesPerWeight) / GB;
+  // Backwards-compat alias used elsewhere in the function.
+  const weightsGB       = weightsTotalGB;
+
+  const vramAvailableGB    = vramTotalGB - weightsTotalGB - overheadGB;
+  const vramAvailableBytes = vramAvailableGB * GB;
+  const kvPerToken         = 2 * numLayers * numKvHeads * headDim * bytesPerElem;
+  const kvPerRequest       = kvPerToken * contextLength;
+
+  // Tokens/sec — decode is memory-bound. Each decode step re-reads
+  // (model_weights + KV cache up to current position) from HBM.
+  //
+  //   TPOT       = (W + KV_active) / (BW × MBU)
+  //   tps        = 1 / TPOT
+  //
+  // KV_active grows from 0 → KV_per_request during generation, so we report:
+  //   tps_empty (start of generation) — best case
+  //   tps_full  (at max context)      — worst case
+  //   tps_avg   (mid-context)         — headline number
+  const mbu        = (parseFloat($("mbu").value) || 0) / 100;
+  const kvFullGB   = kvPerRequest / GB;
+  const denomEmpty = weightsActiveGB;
+  const denomFull  = weightsActiveGB + kvFullGB;
+  const denomAvg   = weightsActiveGB + kvFullGB / 2;
+  const peakBw     = memBwGBps * mbu;
+  const validTps   = (memBwGBps > 0 && weightsActiveGB > 0 && mbu > 0);
+  const tpsEmpty   = validTps ? peakBw / denomEmpty : 0;
+  const tpsFull    = (validTps && denomFull > 0)   ? peakBw / denomFull  : 0;
+  const tps        = (validTps && denomAvg > 0)    ? peakBw / denomAvg   : 0;
+
+  // Concurrent users hero
+  const hero    = $("hero");
+  const heroVal = $("hero-value");
+  const heroSub = $("hero-sub");
+  if (kvPerRequest <= 0) {
+    hero.classList.remove("error");
+    heroVal.textContent = "—";
+    heroSub.textContent = "Fill in the model architecture and context length.";
+  } else if (vramAvailableBytes <= 0) {
+    hero.classList.add("error");
+    heroVal.textContent = "0";
+    heroSub.textContent = `Model + overhead exceed VRAM by ${(-vramAvailableGB).toFixed(2)} GB.`;
+  } else {
+    const maxConc = Math.floor(vramAvailableBytes / kvPerRequest);
+    hero.classList.toggle("error", maxConc === 0);
+    heroVal.textContent = maxConc.toLocaleString();
+    heroSub.textContent = maxConc === 0
+      ? `One request alone needs ${fmtBytes(kvPerRequest).v} ${fmtBytes(kvPerRequest).u} of KV cache.`
+      : `at ${contextLength.toLocaleString()} tokens of context, on ${vramAvailableGB.toFixed(2)} GB free.`;
+  }
+
+  // Tokens/sec hero
+  const heroTps    = $("hero-tps");
+  const heroTpsVal = $("hero-tps-value");
+  const heroTpsSub = $("hero-tps-sub");
+  if (tps > 0) {
+    heroTps.classList.remove("muted");
+    heroTpsVal.innerHTML = `${Math.round(tps).toLocaleString()}<span class="unit">tok/s</span>`;
+    const moeNote = (numParamsB !== activeParamsB) ? ` · ${activeParamsB}B active / ${numParamsB}B total` : "";
+    heroTpsSub.textContent = `${Math.round(tpsFull).toLocaleString()}–${Math.round(tpsEmpty).toLocaleString()} tok/s range (full ctx → empty ctx) · MBU ${(mbu * 100).toFixed(0)}%${moeNote}.`;
+  } else {
+    heroTps.classList.add("muted");
+    heroTpsVal.innerHTML = `—<span class="unit">tok/s</span>`;
+    heroTpsSub.textContent = "Set memory bandwidth, MBU, and parameter count.";
+  }
+
+  // Stats
+  $("stat-weights").textContent = weightsTotalGB > 0 ? weightsTotalGB.toFixed(2) : "—";
+  $("stat-weights-active").textContent = weightsActiveGB > 0 ? weightsActiveGB.toFixed(2) : "—";
+  $("stat-vram").textContent = vramAvailableGB.toFixed(2);
+  const ktok = fmtBytes(kvPerToken);
+  $("stat-kv-token").textContent = kvPerToken > 0 ? ktok.v : "—";
+  $("stat-kv-token-unit").textContent = kvPerToken > 0 ? ktok.u : "";
+  const kreq = fmtBytes(kvPerRequest);
+  $("stat-kv-request").textContent = kvPerRequest > 0 ? kreq.v : "—";
+  $("stat-kv-request-unit").textContent = kvPerRequest > 0 ? kreq.u : "";
+}
+
+// GPU preset → fill VRAM total + memory bandwidth.
+$("gpu-preset").addEventListener("change", (e) => {
+  const opt = e.target.options[e.target.selectedIndex];
+  if (opt && opt.dataset.vram) {
+    $("vram-total").value = opt.dataset.vram;
+    $("mem-bw").value     = opt.dataset.bw;
+    predict();
+  }
+});
+
+// Model preset → fill architecture + parameter counts.
+$("model-preset").addEventListener("change", (e) => {
+  const opt = e.target.options[e.target.selectedIndex];
+  if (opt && opt.dataset.l) {
+    $("num-layers").value   = opt.dataset.l;
+    $("num-kv-heads").value = opt.dataset.kv;
+    $("head-dim").value     = opt.dataset.d;
+    if (opt.dataset.p)      $("num-params").value    = opt.dataset.p;
+    if (opt.dataset.active) $("active-params").value = opt.dataset.active;
+    else if (opt.dataset.p) $("active-params").value = opt.dataset.p;
+    predict();
+  }
+});
+
+// Recompute on any input change
+for (const id of [
+  "vram-total", "mem-bw", "mbu", "vram-overhead",
+  "num-layers", "num-kv-heads", "head-dim",
+  "num-params", "active-params", "weight-quant",
+  "bytes-per-element", "context-length",
+]) {
+  $(id).addEventListener("input", predict);
+}
+predict();
+</script>
+</body>
+</html>

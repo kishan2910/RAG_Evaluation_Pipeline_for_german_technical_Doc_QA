@@ -1,0 +1,18 @@
+[project]
+name = "llm-inference-test"
+version = "0.1.0"
+description = "Benchmark tool for OpenAI-compatible LLM endpoints"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.13.5",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+    # RAG
+    "chromadb>=0.5.0",
+    "pypdf>=4.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+test-llm = "test_llm:main"
+test-rag = "test_rag:main"

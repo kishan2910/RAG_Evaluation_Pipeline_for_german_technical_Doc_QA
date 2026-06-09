@@ -1,0 +1,4 @@
+endpoints:
+  - name: "ollama"
+    url: "https://....:11434/v1"
+    api_key: "ollama"

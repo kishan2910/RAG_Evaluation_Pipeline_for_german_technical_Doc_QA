@@ -1,1 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.claude
+
+results.csv
+results.json
+
+*.lock
+
+rag_eval/mlartifacts/*
+.deepeval_telemetry.txt
+
+config.yaml
+
+# RAG
 .env
+chroma_db/
+rag_results.json
+deepeval_results.json
+
+mlflow.db
